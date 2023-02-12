@@ -29,10 +29,10 @@ print('Loading model...')
 model = whisper.load_model(args.model)
 print('Done')
 
-q = queue.Queue()
-q_s = queue.Queue()
-q_t = queue.Queue()
-q_w = queue.Queue()
+q_audio = queue.Queue()
+q_split = queue.Queue()
+q_sentence = queue.Queue()
+q_show = queue.Queue()
 b = np.ones(100) / 100
 
 options = whisper.DecodingOptions()
@@ -40,7 +40,7 @@ options = whisper.DecodingOptions()
 
 def recognize():
     while True:
-        audio = q.get()
+        audio = q_audio.get()
         if (audio ** 2).max() > 0.001:
             audio = whisper.pad_or_trim(audio)
 
@@ -63,13 +63,13 @@ def recognize():
             #     placeholder_ja.write(result.text)
 
             # add to queue to split sentence
-            q_s.put(result.text)
+            q_split.put(result.text)
 
 
 def split_sentences():
     sentence_prev = ""
     while True:
-        sentence = q_s.get()
+        sentence = q_split.get()
         if sentence:
             sentence = sentence_prev + sentence
             sentence_prev = ""
@@ -79,7 +79,7 @@ def split_sentences():
             for s in sentences:
                 if s[-1] == "。" or s[-1] == "．" or s[-1] == "." or s[-1] == "?"\
                         or s[-1] == "？" or s[-1] == "!" or s[-1] == "！":
-                    q_t.put(s)
+                    q_sentence.put(s)
                     sentence_prev = ""
                 else:
                     sentence_prev = s
@@ -87,7 +87,7 @@ def split_sentences():
 
 def translation():
     while True:
-        sentence = q_t.get()
+        sentence = q_sentence.get()
         if sentence:
             # print("get: " + sentence)
             translator = Translator()
@@ -96,14 +96,14 @@ def translation():
             if lang == "ja":
                 trans_text = translator.translate(
                     sentence, src=lang, dest="en").text
-                q_w.put(["ja", sentence, trans_text])
+                q_show.put(["ja", sentence, trans_text])
                 # print("translate: " + trans_text)
 
             # 言語が英語だったら
             elif lang == "en":
                 trans_text = translator.translate(
                     sentence, src=lang, dest="ja").text
-                q_w.put(["en", sentence, trans_text])
+                q_show.put(["en", sentence, trans_text])
                 # print("translate: " + trans_text)
 
 
@@ -124,7 +124,7 @@ def record():
             m = n * 4 // 5
             vol = np.convolve(audio[m:n] ** 2, b, 'same')
             m += vol.argmin()
-            q.put(audio[:m])
+            q_audio.put(audio[:m])
 
             audio_prev = audio
             audio = np.empty(SAMPLE_RATE * INTERVAL +
@@ -146,7 +146,7 @@ th_record.start()
 sentence = ""
 trans_text = ""
 while True:
-    d_list = q_w.get()
+    d_list = q_show.get()
     la = d_list[0]
     sentence += d_list[1]
     trans_text += d_list[2]
@@ -154,5 +154,5 @@ while True:
         placeholder_ja.write(sentence)
         placeholder_en.write(trans_text)
     elif la == "en":
-        placeholder_en.write(trans_text)
-        placeholder_ja.write(sentence)
+        placeholder_en.write(sentence)
+        placeholder_ja.write(trans_text)
