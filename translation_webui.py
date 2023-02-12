@@ -9,14 +9,6 @@ import re
 import argparse
 
 
-col_en, col_ja = st.columns(2)
-with col_en:
-    st.header("en")
-    placeholder_en = st.empty()
-with col_ja:
-    st.header("ja")
-    placeholder_ja = st.empty()
-
 SAMPLE_RATE = 16000
 INTERVAL = 5
 BUFFER_SIZE = 4096
@@ -143,19 +135,27 @@ th_split.start()
 th_translate.start()
 th_record.start()
 
-sentence = ""
-trans_text = ""
+refresh_button = st.button("refresh")
+col_en, col_ja = st.columns(2)
+with col_en:
+    st.header("en")
+    placeholder_en = st.empty()
+with col_ja:
+    st.header("ja")
+    placeholder_ja = st.empty()
+ja_sentence = ""
+en_sentence = ""
 while True:
     d_list = q_show.get()
     la = d_list[0]
 
     if la == "ja":
-        sentence += d_list[1]
-        trans_text += d_list[2]
-        placeholder_ja.write(sentence)
-        placeholder_en.write(trans_text)
+        ja_sentence += d_list[1]
+        en_sentence += d_list[2]
+        placeholder_ja.write(ja_sentence)
+        placeholder_en.write(en_sentence)
     elif la == "en":
-        sentence += d_list[1]
-        trans_text += d_list[2]
-        placeholder_en.write(sentence)
-        placeholder_ja.write(trans_text)
+        en_sentence += d_list[1]
+        ja_sentence += d_list[2]
+        placeholder_en.write(en_sentence)
+        placeholder_ja.write(ja_sentence)
