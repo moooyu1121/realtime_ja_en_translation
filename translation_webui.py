@@ -14,7 +14,7 @@ INTERVAL = 5
 BUFFER_SIZE = 4096
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='large')
+parser.add_argument('--model', default='medium')
 args = parser.parse_args()
 
 print('Loading model...')
