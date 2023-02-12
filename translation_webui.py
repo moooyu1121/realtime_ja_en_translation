@@ -1,3 +1,6 @@
+"""
+streamlit run translation_webui.py -- --sound mic
+"""
 import streamlit as st
 import whisper
 from googletrans import Translator
@@ -14,7 +17,8 @@ INTERVAL = 5
 BUFFER_SIZE = 4096
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='medium')
+parser.add_argument('--model', default='large')
+parser.add_argument('--sound', default='speaker')
 args = parser.parse_args()
 
 print('Loading model...')
@@ -58,7 +62,7 @@ def recognize():
             q_split.put(result.text)
 
 
-def split_sentences():
+def split_sentences_speaker():
     sentence_prev = ""
     while True:
         sentence = q_split.get()
@@ -75,6 +79,13 @@ def split_sentences():
                     sentence_prev = ""
                 else:
                     sentence_prev = s
+
+
+def split_sentences_mic():
+    while True:
+        sentence = q_split.get()
+        if sentence:
+            q_sentence.put(sentence)
 
 
 def translation():
@@ -101,32 +112,88 @@ def translation():
 
 def record():
     # start recording
-    with sc.get_microphone(id=str(sc.default_speaker().name),
-                           include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
-        audio = np.empty(SAMPLE_RATE * INTERVAL +
-                         BUFFER_SIZE, dtype=np.float32)
-        n = 0
-        while True:
-            while n < SAMPLE_RATE * INTERVAL:
-                data = mic.record(BUFFER_SIZE)
-                audio[n:n+len(data)] = data.reshape(-1)
-                n += len(data)
-
-            # find silent periods
-            m = n * 4 // 5
-            vol = np.convolve(audio[m:n] ** 2, b, 'same')
-            m += vol.argmin()
-            q_audio.put(audio[:m])
-
-            audio_prev = audio
+    if args.sound == "speaker":
+        with sc.get_microphone(id=str(sc.default_speaker().name),
+                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
             audio = np.empty(SAMPLE_RATE * INTERVAL +
                              BUFFER_SIZE, dtype=np.float32)
-            audio[:n-m] = audio_prev[m:n]
-            n = n-m
+            n = 0
+            while True:
+                while n < SAMPLE_RATE * INTERVAL:
+                    data = mic.record(BUFFER_SIZE)
+                    audio[n:n+len(data)] = data.reshape(-1)
+                    n += len(data)
+
+                # find silent periods
+                m = n * 4 // 5
+                vol = np.convolve(audio[m:n] ** 2, b, 'same')
+                m += vol.argmin()
+                q_audio.put(audio[:m])
+
+                audio_prev = audio
+                audio = np.empty(SAMPLE_RATE * INTERVAL +
+                                 BUFFER_SIZE, dtype=np.float32)
+                audio[:n-m] = audio_prev[m:n]
+                n = n-m
+
+    elif args.sound == "mic":
+        with sc.get_microphone(id=str(sc.default_microphone().name),
+                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
+            audio = np.empty(SAMPLE_RATE * INTERVAL +
+                             BUFFER_SIZE, dtype=np.float32)
+            n = 0
+            while True:
+                while n < SAMPLE_RATE * INTERVAL:
+                    data = mic.record(BUFFER_SIZE)
+                    audio[n:n+len(data)] = data.reshape(-1)
+                    n += len(data)
+
+                # find silent periods
+                m = n * 4 // 5
+                vol = np.convolve(audio[m:n] ** 2, b, 'same')
+                m += vol.argmin()
+                q_audio.put(audio[:m])
+
+                audio_prev = audio
+                audio = np.empty(SAMPLE_RATE * INTERVAL +
+                                 BUFFER_SIZE, dtype=np.float32)
+                audio[:n-m] = audio_prev[m:n]
+                n = n-m
+
+    else:
+        print("sound source input is not valid. Use speaker sound...")
+        with sc.get_microphone(id=str(sc.default_speaker().name),
+                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
+            audio = np.empty(SAMPLE_RATE * INTERVAL +
+                             BUFFER_SIZE, dtype=np.float32)
+            n = 0
+            while True:
+                while n < SAMPLE_RATE * INTERVAL:
+                    data = mic.record(BUFFER_SIZE)
+                    audio[n:n+len(data)] = data.reshape(-1)
+                    n += len(data)
+
+                # find silent periods
+                m = n * 4 // 5
+                vol = np.convolve(audio[m:n] ** 2, b, 'same')
+                m += vol.argmin()
+                q_audio.put(audio[:m])
+
+                audio_prev = audio
+                audio = np.empty(SAMPLE_RATE * INTERVAL +
+                                 BUFFER_SIZE, dtype=np.float32)
+                audio[:n-m] = audio_prev[m:n]
+                n = n-m
 
 
 th_recognize = threading.Thread(target=recognize, daemon=True)
-th_split = threading.Thread(target=split_sentences, daemon=True)
+if args.sound == "speaker":
+    th_split = threading.Thread(target=split_sentences_speaker, daemon=True)
+elif args.sound == "mic":
+    th_split = threading.Thread(target=split_sentences_mic, daemon=True)
+else:
+    print("sound source input is not valid. Use speaker sound...")
+    th_split = threading.Thread(target=split_sentences_speaker, daemon=True)
 th_translate = threading.Thread(target=translation, daemon=True)
 th_record = threading.Thread(target=record, daemon=True)
 
@@ -137,6 +204,7 @@ th_record.start()
 
 # リフレッシュと同時になぜかモデルのロードが始まってVRAMが溢れて死ぬ。なんで、、、
 # refresh_button = st.button("refresh")
+st.header(args.sound + "mode")
 col_en, col_ja = st.columns(2)
 with col_en:
     st.header("en")
@@ -155,11 +223,17 @@ while True:
         en_sentence = en_sentence + d_list[2] + "\n\n"
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
+        if d_list[1] == "チャットリセット":
+            ja_sentence = ""
+            en_sentence = ""
     elif la == "en":
         en_sentence = en_sentence + d_list[1] + "\n\n"
         ja_sentence = ja_sentence + d_list[2] + "\n\n"
         placeholder_en.write(en_sentence)
         placeholder_ja.write(ja_sentence)
+        if d_list[1] == "chat reset":
+            ja_sentence = ""
+            en_sentence = ""
 
     # if refresh_button:
     #     ja_sentence = ""
