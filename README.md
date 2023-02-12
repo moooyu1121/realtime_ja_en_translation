@@ -18,5 +18,6 @@ https://happy-shibusawake.com/openai_whisper/696/
 pytorchはpython3.7対応となっているstableの方を入れてもらえば、python3.8でも動きました。CUDAは11.7を入れてます。
 
 whisperを動かす土台ができていれば、あとはanaconda等でenvironment.ymlから仮想環境を作ってもらえば行ける、、、はずです。
+whisperのモデルはデフォルトではmediumを読み込むようになっています。翻訳にかける都合上、文字起こしはなるべく高い精度が欲しいのでmediumかlargeがおすすめです。
 ![Screenshot 2023-02-13 045713](https://user-images.githubusercontent.com/87175394/218334117-19787714-1fb9-4915-b611-1c5ec32ec8b5.png)
 ![Screenshot 2023-02-13 050025](https://user-images.githubusercontent.com/87175394/218334121-1acc1399-1f62-4b78-8127-adc6b390904e.png)
