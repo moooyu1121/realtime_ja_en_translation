@@ -135,7 +135,8 @@ th_split.start()
 th_translate.start()
 th_record.start()
 
-refresh_button = st.button("refresh")
+# リフレッシュと同時になぜかモデルのロードが始まってVRAMが溢れて死ぬ。なんで、、、
+# refresh_button = st.button("refresh")
 col_en, col_ja = st.columns(2)
 with col_en:
     st.header("en")
@@ -150,12 +151,18 @@ while True:
     la = d_list[0]
 
     if la == "ja":
-        ja_sentence += d_list[1]
-        en_sentence += d_list[2]
+        ja_sentence = ja_sentence + d_list[1] + "\n\n"
+        en_sentence = en_sentence + d_list[2] + "\n\n"
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
     elif la == "en":
-        en_sentence += d_list[1]
-        ja_sentence += d_list[2]
+        en_sentence = en_sentence + d_list[1] + "\n\n"
+        ja_sentence = ja_sentence + d_list[2] + "\n\n"
         placeholder_en.write(en_sentence)
         placeholder_ja.write(ja_sentence)
+
+    # if refresh_button:
+    #     ja_sentence = ""
+    #     en_sentence = ""
+    # else:
+    #     pass
