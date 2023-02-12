@@ -148,11 +148,14 @@ trans_text = ""
 while True:
     d_list = q_show.get()
     la = d_list[0]
-    sentence += d_list[1]
-    trans_text += d_list[2]
+
     if la == "ja":
+        sentence += d_list[1]
+        trans_text += d_list[2]
         placeholder_ja.write(sentence)
         placeholder_en.write(trans_text)
     elif la == "en":
+        sentence += d_list[1]
+        trans_text += d_list[2]
         placeholder_en.write(sentence)
         placeholder_ja.write(trans_text)
