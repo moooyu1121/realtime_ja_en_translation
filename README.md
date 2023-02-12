@@ -1,9 +1,9 @@
 # realtime_translation
 リアルタイム日本語 ⇔ 英語翻訳をします。
 
-マイクから音声を拾って、英語なら日本語に、日本語なら英語に翻訳します。
+スピーカーからの出力を拾って、英語なら日本語に、日本語なら英語に翻訳します。
 
-マイクで音を拾う → whisperで文字起こし → google翻訳のapi(フリーで使えます) → streamlitで表示
+デフォルトスピーカーの出力を拾う → whisperで文字起こし → google翻訳のapi(フリーで使えます) → streamlitで表示
 という流れになっています。
 
 whisperを動かすためのアレコレ(CUDAとcuDNNとpytorchとffmpegと、、)が必要です。
@@ -29,3 +29,5 @@ whisperのモデルはデフォルトではmediumを読み込むようになっ�
 https://tadaoyamaoka.hatenablog.com/entry/2022/10/15/175722
 
 を"全面的"に参考にさせていただきました。本当にありがとうございました。
+
+104行目、record関数内のsc.default_speakerをsc.default_microphoneに変えると、マイクから音を拾って翻訳してくれるようにもできます！
