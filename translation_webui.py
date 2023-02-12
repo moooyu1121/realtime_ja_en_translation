@@ -204,7 +204,6 @@ th_record.start()
 
 # リフレッシュと同時になぜかモデルのロードが始まってVRAMが溢れて死ぬ。なんで、、、
 # refresh_button = st.button("refresh")
-st.header(args.sound + "mode")
 col_en, col_ja = st.columns(2)
 with col_en:
     st.header("en")
