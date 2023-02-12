@@ -21,3 +21,9 @@ whisperを動かす土台ができていれば、あとはanaconda等でenvironm
 whisperのモデルはデフォルトではmediumを読み込むようになっています。翻訳にかける都合上、文字起こしはなるべく高い精度が欲しいのでmediumかlargeがおすすめです。
 ![Screenshot 2023-02-13 045713](https://user-images.githubusercontent.com/87175394/218334117-19787714-1fb9-4915-b611-1c5ec32ec8b5.png)
 ![Screenshot 2023-02-13 050025](https://user-images.githubusercontent.com/87175394/218334121-1acc1399-1f62-4b78-8127-adc6b390904e.png)
+
+今回、自動的にいい感じに区切りながら音声を読み取って行く工程は
+
+https://tadaoyamaoka.hatenablog.com/entry/2022/10/15/175722
+
+を"全面的"に参考にさせていただきました。本当にありがとうございました。
