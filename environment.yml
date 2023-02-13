@@ -153,6 +153,7 @@ dependencies:
       - importlib-resources==5.10.2
       - jinja2==3.1.2
       - jsonschema==4.17.3
+      - keyboard==0.13.5
       - markdown-it-py==2.1.0
       - markupsafe==2.1.2
       - mdurl==0.1.2
@@ -194,3 +195,4 @@ dependencies:
       - validators==0.20.0
       - watchdog==2.2.1
       - zipp==3.13.0
+prefix: C:\Users\ys11m\anaconda3\envs\whisper
