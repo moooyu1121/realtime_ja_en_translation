@@ -9,6 +9,9 @@ import threading
 import queue
 import numpy as np
 import re
+import keyboard
+import datetime
+import os
 import argparse
 
 
@@ -32,6 +35,7 @@ q_show = queue.Queue()
 b = np.ones(100) / 100
 
 options = whisper.DecodingOptions()
+os.makedirs("log", exist_ok=True)
 
 
 def recognize():
@@ -213,26 +217,72 @@ with col_ja:
     placeholder_ja = st.empty()
 ja_sentence = ""
 en_sentence = ""
+ja_log = ""
+en_log = ""
 while True:
     d_list = q_show.get()
     la = d_list[0]
+    if keyboard.is_pressed("end"):
+        ja_sentence = ""
+        en_sentence = ""
+        time = str(datetime.datetime.now().replace(microsecond=0))
+        time = time.replace(" ", "_")
+        time = time.replace(":", "-")
+        path_ja = "log/" + time + "_ja.txt"
+        path_en = "log/" + time + "_en.txt"
+        f_ja = open(path_ja, "w")
+        f_en = open(path_en, "w")
+        f_ja.write(ja_log)
+        f_en.write(en_log)
+        f_ja.close()
+        f_en.close()
+        ja_log = ""
+        en_log = ""
 
     if la == "ja":
-        ja_sentence = ja_sentence + d_list[1] + "\n\n"
-        en_sentence = en_sentence + d_list[2] + "\n\n"
+        ja_sentence = d_list[1] + "\n\n" + ja_sentence
+        en_sentence = d_list[2] + "\n\n" + en_sentence
+        ja_log = ja_log + "\n" + d_list[1]
+        en_log = en_log + "\n" + d_list[2]
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
         if d_list[1] == "チャットリセット":
             ja_sentence = ""
             en_sentence = ""
+            time = str(datetime.datetime.now())
+            time = time.replace(" ", "_")
+            path_ja = "log/" + time + "_ja.txt"
+            path_en = "log/" + time + "_en.txt"
+            f_ja = open(path_ja, "w")
+            f_en = open(path_en, "w")
+            f_ja.write(ja_log)
+            f_en.write(en_log)
+            f_ja.close()
+            f_en.close()
+            ja_log = ""
+            en_log = ""
     elif la == "en":
-        en_sentence = en_sentence + d_list[1] + "\n\n"
-        ja_sentence = ja_sentence + d_list[2] + "\n\n"
+        en_sentence = d_list[1] + "\n\n" + en_sentence
+        ja_sentence = d_list[2] + "\n\n" + ja_sentence
+        en_log = en_log + "\n" + d_list[1]
+        ja_log = ja_log + "\n" + d_list[2]
         placeholder_en.write(en_sentence)
         placeholder_ja.write(ja_sentence)
         if d_list[1] == "chat reset":
             ja_sentence = ""
             en_sentence = ""
+            time = str(datetime.datetime.now())
+            time = time.replace(" ", "_")
+            path_ja = "log/" + time + "_ja.txt"
+            path_en = "log/" + time + "_en.txt"
+            f_ja = open(path_ja, "w")
+            f_en = open(path_en, "w")
+            f_ja.write(ja_log)
+            f_en.write(en_log)
+            f_ja.close()
+            f_en.close()
+            ja_log = ""
+            en_log = ""
 
     # if refresh_button:
     #     ja_sentence = ""
