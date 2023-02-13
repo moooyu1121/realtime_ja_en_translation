@@ -19,7 +19,7 @@ pytorchはpython3.7対応となっているstableの方を入れてもらえば�
 
 whisperを動かす土台ができていれば、あとはanaconda等でenvironment.ymlから仮想環境を作ってもらえば行ける、、、はずです。
 
-whisperのモデルはデフォルトではmediumを読み込むようになっています。翻訳にかける都合上、文字起こしはなるべく高い精度が欲しいのでmediumかlargeがおすすめです。
+whisperのモデルはデフォルトではlargeを読み込むようになっています。翻訳にかける都合上、文字起こしはなるべく高い精度が欲しいのでmediumかlargeがおすすめです。
 
 実行するときは、streamlit run translation_webui.py をコマンドとして実行します。
 
