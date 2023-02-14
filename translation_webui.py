@@ -1,16 +1,17 @@
 """
-streamlit run translation_webui.py -- --sound mic
+streamlit run translation_webui.py -- --sound speaker --model large
+streamlit run translation_webui.py -- --sound mic --model large
 """
 import streamlit as st
 import whisper
 from googletrans import Translator
 import soundcard as sc
+import keyboard
+import datetime
 import threading
 import queue
 import numpy as np
 import re
-import keyboard
-import datetime
 import os
 import argparse
 
@@ -27,6 +28,7 @@ args = parser.parse_args()
 print('Loading model...')
 model = whisper.load_model(args.model)
 print('Done')
+print('sound source: ' + args.sound)
 
 q_audio = queue.Queue()
 q_split = queue.Queue()
@@ -63,7 +65,7 @@ def recognize():
             #     placeholder_ja.write(result.text)
 
             # add to queue to split sentence
-            q_split.put(result.text)
+            q_split.put(result.text)  # type: ignore
 
 
 def split_sentences_speaker():
@@ -93,23 +95,26 @@ def split_sentences_mic():
 
 
 def translation():
+    """
+    [言語，元文，翻訳文]を1つのリストとしてキューに追加
+    """
     while True:
         sentence = q_sentence.get()
         if sentence:
             # print("get: " + sentence)
             translator = Translator()
-            lang = translator.detect(sentence).lang
+            lang = translator.detect(sentence).lang  # type: ignore
             # 言語が日本語だったら
             if lang == "ja":
                 trans_text = translator.translate(
-                    sentence, src=lang, dest="en").text
+                    sentence, src=lang, dest="en").text  # type: ignore
                 q_show.put(["ja", sentence, trans_text])
                 # print("translate: " + trans_text)
 
             # 言語が英語だったら
             elif lang == "en":
                 trans_text = translator.translate(
-                    sentence, src=lang, dest="ja").text
+                    sentence, src=lang, dest="ja").text  # type: ignore
                 q_show.put(["en", sentence, trans_text])
                 # print("translate: " + trans_text)
 
@@ -207,6 +212,7 @@ th_translate.start()
 th_record.start()
 
 # リフレッシュと同時になぜかモデルのロードが始まってVRAMが溢れて死ぬ。なんで、、、
+# ↑streamlitの仕様らしい
 # refresh_button = st.button("refresh")
 col_en, col_ja = st.columns(2)
 with col_en:
@@ -215,74 +221,66 @@ with col_en:
 with col_ja:
     st.header("ja")
     placeholder_ja = st.empty()
+t = str(datetime.datetime.now().replace(microsecond=0))
+t = t.replace(" ", "_")
+t = t.replace(":", "-")
+path_ja = "log/" + t + "_ja.txt"
+path_en = "log/" + t + "_en.txt"
+
 ja_sentence = ""
 en_sentence = ""
-ja_log = ""
-en_log = ""
+
 while True:
     d_list = q_show.get()
     la = d_list[0]
-    if keyboard.is_pressed("end"):
-        ja_sentence = ""
-        en_sentence = ""
-        time = str(datetime.datetime.now().replace(microsecond=0))
-        time = time.replace(" ", "_")
-        time = time.replace(":", "-")
-        path_ja = "log/" + time + "_ja.txt"
-        path_en = "log/" + time + "_en.txt"
-        f_ja = open(path_ja, "w")
-        f_en = open(path_en, "w")
-        f_ja.write(ja_log)
-        f_en.write(en_log)
-        f_ja.close()
-        f_en.close()
-        ja_log = ""
-        en_log = ""
 
     if la == "ja":
         ja_sentence = d_list[1] + "\n\n" + ja_sentence
         en_sentence = d_list[2] + "\n\n" + en_sentence
-        ja_log = ja_log + "\n" + d_list[1]
-        en_log = en_log + "\n" + d_list[2]
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
+        f_ja = open(path_ja, "a")
+        f_ja.write(d_list[1] + "\n")
+        f_ja.close()
+        f_en = open(path_en, "a")
+        f_en.write(d_list[2] + "\n")
+        f_en.close()
         if d_list[1] == "チャットリセット":
             ja_sentence = ""
             en_sentence = ""
-            time = str(datetime.datetime.now())
-            time = time.replace(" ", "_")
-            path_ja = "log/" + time + "_ja.txt"
-            path_en = "log/" + time + "_en.txt"
-            f_ja = open(path_ja, "w")
-            f_en = open(path_en, "w")
-            f_ja.write(ja_log)
-            f_en.write(en_log)
-            f_ja.close()
-            f_en.close()
-            ja_log = ""
-            en_log = ""
+            t = str(datetime.datetime.now().replace(microsecond=0))
+            t = t.replace(" ", "_")
+            t = t.replace(":", "-")
+            path_ja = "log/" + t + "_ja.txt"
+            path_en = "log/" + t + "_en.txt"
     elif la == "en":
         en_sentence = d_list[1] + "\n\n" + en_sentence
         ja_sentence = d_list[2] + "\n\n" + ja_sentence
-        en_log = en_log + "\n" + d_list[1]
-        ja_log = ja_log + "\n" + d_list[2]
         placeholder_en.write(en_sentence)
         placeholder_ja.write(ja_sentence)
+        f_ja = open(path_ja, "a")
+        f_ja.write(d_list[2] + "\n")
+        f_ja.close()
+        f_en = open(path_en, "a")
+        f_en.write(d_list[1] + "\n")
+        f_en.close()
         if d_list[1] == "chat reset":
             ja_sentence = ""
             en_sentence = ""
-            time = str(datetime.datetime.now())
-            time = time.replace(" ", "_")
-            path_ja = "log/" + time + "_ja.txt"
-            path_en = "log/" + time + "_en.txt"
-            f_ja = open(path_ja, "w")
-            f_en = open(path_en, "w")
-            f_ja.write(ja_log)
-            f_en.write(en_log)
-            f_ja.close()
-            f_en.close()
-            ja_log = ""
-            en_log = ""
+            t = str(datetime.datetime.now().replace(microsecond=0))
+            t = t.replace(" ", "_")
+            t = t.replace(":", "-")
+            path_ja = "log/" + t + "_ja.txt"
+            path_en = "log/" + t + "_en.txt"
+
+    if keyboard.is_pressed("end"):
+        ja_sentence = ""
+        en_sentence = ""
+        t = str(datetime.datetime.now().replace(microsecond=0))
+        t = t.replace(" ", "_")
+        t = t.replace(":", "-")
+        path_ja = "log/" + t + "_ja.txt"
+        path_en = "log/" + t + "_en.txt"
 
     # if refresh_button:
     #     ja_sentence = ""
