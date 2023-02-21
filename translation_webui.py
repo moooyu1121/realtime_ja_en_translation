@@ -65,7 +65,8 @@ def recognize():
             #     placeholder_ja.write(result.text)
 
             # add to queue to split sentence
-            q_split.put(result.text)  # type: ignore
+            if max(probs, key=probs.get) == "en" or max(probs, key=probs.get) == "ja":
+                q_split.put(result.text)  # type: ignore
 
 
 def split_sentences_speaker():
@@ -96,6 +97,7 @@ def split_sentences_mic():
 
 def translation():
     """
+    split sentence queue から文章を受け取り，google translation apiへ渡して翻訳
     [言語，元文，翻訳文]を1つのリストとしてキューに追加
     """
     while True:
@@ -258,10 +260,10 @@ while True:
         ja_sentence = d_list[2] + "\n\n" + ja_sentence
         placeholder_en.write(en_sentence)
         placeholder_ja.write(ja_sentence)
-        f_ja = open(path_ja, "a")
+        f_ja = open(path_ja, "a", encoding='UTF-8')
         f_ja.write(d_list[2] + "\n")
         f_ja.close()
-        f_en = open(path_en, "a")
+        f_en = open(path_en, "a", encoding='UTF-8')
         f_en.write(d_list[1] + "\n")
         f_en.close()
         if d_list[1] == "chat reset":
