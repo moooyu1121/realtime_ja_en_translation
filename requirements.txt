@@ -2,4 +2,3 @@ google-cloud-speech
 googletrans
 streamlit
 soundcard
-keyboard
