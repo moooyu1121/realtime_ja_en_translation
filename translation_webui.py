@@ -34,34 +34,38 @@ stop_flag = threading.Event()
 # Logging directory
 os.makedirs("log", exist_ok=True)
 
+
 def transcribe_audio_with_language_detection(stop_flag):
-    """
-    Transcribe audio and detect the language using Google Speech-to-Text API.
-    """
     client = speech.SpeechClient()
     while not stop_flag.is_set():
         try:
-            audio = q_audio.get(timeout=1)
-            if (audio ** 2).max() > 0.001:
-                content = audio.tobytes()
-                # Configure the audio and recognition settings
-                audio_data = speech.RecognitionAudio(content=content)
-                config = speech.RecognitionConfig(
-                    encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-                    sample_rate_hertz=SAMPLE_RATE,
-                    language_code="en-US",
-                    alternative_language_codes=["ja-JP"],
-                )
-                # Perform the transcription
-                response = client.recognize(config=config, audio=audio_data)
-                for result in response.results:
+            audio_pcm = q_audio.get(timeout=1)
+            if not audio_pcm:
+                print("Empty audio data received")  # Debugging statement
+                continue
+            print(f"Audio PCM size: {len(audio_pcm)}")  # Check audio data size
+
+            audio_data = speech.RecognitionAudio(content=audio_pcm)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=SAMPLE_RATE,
+                language_code="en-US",
+                alternative_language_codes=["ja-JP"],
+            )
+            response = client.recognize(config=config, audio=audio_data)
+            for result in response.results:
+                if result.alternatives:
                     transcript = result.alternatives[0].transcript
+                    print(f"Transcript: {transcript}")  # Debugging statement
                     q_split.put(transcript)
+                else:
+                    print("No alternatives found in response.")  # Debugging statement
         except queue.Empty:
             continue
         except Exception as e:
-            st.error(f"Error during transcription: {e}")
+            print(f"Transcription error: {e}")  # Debugging statement
             break
+
 
 def split_sentences(stop_flag):
     """
@@ -98,31 +102,44 @@ def translation(stop_flag):
             elif lang == "en":
                 trans_text = translator.translate(sentence, src="en", dest="ja").text
                 q_show.put(["en", sentence, trans_text])
+            print(f"Queued translation: {sentence} -> {trans_text}") # Debugging statement
         except queue.Empty:
             continue
         except Exception as e:
             st.error(f"Translation error: {e}")
 
+
 def record_audio(stop_flag):
-    """
-    Record audio from the selected sound source.
-    """
-    mic = (
-        sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
-        if sound_source == "speaker"
-        else sc.get_microphone(id=str(sc.default_microphone().name))
-    )
-    with mic.recorder(samplerate=SAMPLE_RATE, channels=1) as recorder:
-        audio = np.empty(SAMPLE_RATE * INTERVAL + BUFFER_SIZE, dtype=np.float32)
-        n = 0
-        while not stop_flag.is_set():
-            while n < SAMPLE_RATE * INTERVAL:
-                data = recorder.record(BUFFER_SIZE)
-                audio[n:n + len(data)] = data.reshape(-1)
-                n += len(data)
-            q_audio.put(audio[:n])
-            audio = np.empty(SAMPLE_RATE * INTERVAL + BUFFER_SIZE, dtype=np.float32)
-            n = 0
+    import comtypes  # Import within the function to avoid global initialization
+    comtypes.CoInitialize()  # Initialize COM for this thread
+
+    try:
+        mic = (
+            sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
+            if sound_source == "speaker"
+            else sc.get_microphone(id=str(sc.default_microphone().name))
+        )
+        with mic.recorder(samplerate=SAMPLE_RATE, channels=1) as recorder:
+            audio_buffer = np.empty(SAMPLE_RATE * INTERVAL, dtype=np.float32)
+            print(f"Audio buffer length: {len(audio_buffer)}")  # Debugging statement
+            while not stop_flag.is_set():
+                try:
+                    # Read audio data
+                    audio_data = recorder.record(BUFFER_SIZE)
+                    audio_data = audio_data[:, 0]  # Ensure it's a 1D array
+                    audio_buffer = np.concatenate([audio_buffer[len(audio_data):], audio_data])
+                    # Convert to 16-bit PCM
+                    audio_pcm = (audio_buffer * 32767).astype(np.int16).tobytes()
+                    if audio_pcm:
+                        print("Captured audio data")  # Debugging statement
+                        q_audio.put(audio_pcm)
+                except Exception as e:
+                    print(f"Audio recording error: {e}")
+                    break
+    finally:
+        # Ensure COM is uninitialized when the thread exits
+        comtypes.CoUninitialize()
+            
 
 # UI Components
 refresh_button = st.button("Refresh")
@@ -146,11 +163,13 @@ en_sentence = ""
 
 if start_button:
     stop_flag.clear()
+    print("Starting threads...")
     threading.Thread(target=record_audio, args=(stop_flag,), daemon=True).start()
     threading.Thread(target=transcribe_audio_with_language_detection, args=(stop_flag,), daemon=True).start()
     threading.Thread(target=split_sentences, args=(stop_flag,), daemon=True).start()
     threading.Thread(target=translation, args=(stop_flag,), daemon=True).start()
     st.success("Transcription started.")
+    print("All threads started.")
 
 if stop_button:
     stop_flag.set()
@@ -160,25 +179,43 @@ if refresh_button:
     ja_sentence = ""
     en_sentence = ""
 
+
 while not stop_flag.is_set():
     try:
+        # Get the transcription result from the queue
         d_list = q_show.get(timeout=1)
+        print(f"Translation output: {d_list}")  # Debugging statement
+        
         lang, original, translated = d_list
+
+        # Displaying transcription in the Streamlit UI
         if lang == "ja":
             ja_sentence = f"{original}\n\n{ja_sentence}"
             en_sentence = f"{translated}\n\n{en_sentence}"
-            with open(path_ja, "a", encoding="utf-8") as f:
-                f.write(original + "\n")
-            with open(path_en, "a", encoding="utf-8") as f:
-                f.write(translated + "\n")
+
+            # Avoid redundant transcription by checking if the sentence has been added already
+            if original not in ja_sentence:
+                with open(path_ja, "a", encoding="utf-8") as f:
+                    f.write(original + "\n")
+            if translated not in en_sentence:
+                with open(path_en, "a", encoding="utf-8") as f:
+                    f.write(translated + "\n")
+
         elif lang == "en":
             en_sentence = f"{original}\n\n{en_sentence}"
             ja_sentence = f"{translated}\n\n{ja_sentence}"
-            with open(path_ja, "a", encoding="utf-8") as f:
-                f.write(translated + "\n")
-            with open(path_en, "a", encoding="utf-8") as f:
-                f.write(original + "\n")
+
+            # Avoid redundant transcription by checking if the sentence has been added already
+            if translated not in ja_sentence:
+                with open(path_ja, "a", encoding="utf-8") as f:
+                    f.write(translated + "\n")
+            if original not in en_sentence:
+                with open(path_en, "a", encoding="utf-8") as f:
+                    f.write(original + "\n")
+
+        # Display the transcriptions in Streamlit
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
+
     except queue.Empty:
         continue

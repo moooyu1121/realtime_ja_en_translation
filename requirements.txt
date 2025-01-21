@@ -2,3 +2,4 @@ google-cloud-speech
 googletrans
 streamlit
 soundcard
+comtypes
