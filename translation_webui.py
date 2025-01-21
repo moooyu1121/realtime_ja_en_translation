@@ -1,9 +1,9 @@
 """
-streamlit run translation_webui.py -- --sound speaker --model large
-streamlit run translation_webui.py -- --sound mic --model large
+streamlit run translation_webui.py -- --sound speaker
+streamlit run translation_webui.py -- --sound mic
 """
 import streamlit as st
-import whisper
+from google.cloud import speech
 from googletrans import Translator
 import soundcard as sc
 import keyboard
@@ -21,13 +21,11 @@ INTERVAL = 5
 BUFFER_SIZE = 4096
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='large')
 parser.add_argument('--sound', default='speaker')
 args = parser.parse_args()
 
-print('Loading model...')
-model = whisper.load_model(args.model)
-print('Done')
+# Set the environment variable for authentication
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "composed-card-448514-q1-c3191fa38891.json"
 print('sound source: ' + args.sound)
 
 q_audio = queue.Queue()
@@ -36,37 +34,40 @@ q_sentence = queue.Queue()
 q_show = queue.Queue()
 b = np.ones(100) / 100
 
-options = whisper.DecodingOptions()
 os.makedirs("log", exist_ok=True)
 
 
-def recognize():
+def transcribe_audio_with_language_detection():
+    """
+    Transcribe audio and detect the language using Google Speech-to-Text API.
+    """
+    client = speech.SpeechClient()
     while True:
         audio = q_audio.get()
         if (audio ** 2).max() > 0.001:
-            audio = whisper.pad_or_trim(audio)
+            content = audio.tobytes()
+            # Configure the audio and recognition settings
+            audio = speech.RecognitionAudio(content=content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,  # Change if your file has a different encoding
+                sample_rate_hertz=16000,  # Update if your file has a different sample rate
+                language_code="en-US",  # Primary language (optional, for biasing results)
+                alternative_language_codes=["ja-JP"],  # Other languages to detect
+            )
 
-            # make log-Mel spectrogram and move to the same device as the model
-            mel = whisper.log_mel_spectrogram(audio).to(model.device)
+            # Perform the transcription
+            response = client.recognize(config=config, audio=audio)
 
-            # detect the spoken language
-            _, probs = model.detect_language(mel)
-
-            # decode the audio
-            result = whisper.decode(model, mel, options)
-
-            # print the recognized text
-            print(f'{max(probs, key=probs.get)}: {result.text}')
-            # if max(probs, key=probs.get) == "en":
-            #     # with col_en:
-            #     placeholder_en.write(result.text)
-            # if max(probs, key=probs.get) == "ja":
-            #     # with col_ja:
-            #     placeholder_ja.write(result.text)
-
+            # Print the transcriptions and detected language
+            for result in response.results:
+                transcript = result.alternatives[0].transcript
+                confidence = result.alternatives[0].confidence
+                detected_language = result.language_code  # Detected language
+                print(f'{detected_language, confidence:.2f}: {transcript}')
+            
             # add to queue to split sentence
-            if max(probs, key=probs.get) == "en" or max(probs, key=probs.get) == "ja":
-                q_split.put(result.text)  # type: ignore
+            # if detected_language == "en-US" or detected_language == "ja-JP":
+            q_split.put(transcript)
 
 
 def split_sentences_speaker():
@@ -197,7 +198,7 @@ def record():
                 n = n-m
 
 
-th_recognize = threading.Thread(target=recognize, daemon=True)
+th_recognize = threading.Thread(target=transcribe_audio_with_language_detection, daemon=True)
 if args.sound == "speaker":
     th_split = threading.Thread(target=split_sentences_speaker, daemon=True)
 elif args.sound == "mic":
@@ -213,15 +214,14 @@ th_split.start()
 th_translate.start()
 th_record.start()
 
-# リフレッシュと同時になぜかモデルのロードが始まってVRAMが溢れて死ぬ。なんで、、、
-# ↑streamlitの仕様らしい
-# refresh_button = st.button("refresh")
+
+refresh_button = st.button("refresh")
 col_en, col_ja = st.columns(2)
 with col_en:
-    st.header("en")
+    st.header("English")
     placeholder_en = st.empty()
 with col_ja:
-    st.header("ja")
+    st.header("日本語")
     placeholder_ja = st.empty()
 t = str(datetime.datetime.now().replace(microsecond=0))
 t = t.replace(" ", "_")
@@ -247,14 +247,6 @@ while True:
         f_en = open(path_en, "a")
         f_en.write(d_list[2] + "\n")
         f_en.close()
-        if d_list[1] == "チャットリセット":
-            ja_sentence = ""
-            en_sentence = ""
-            t = str(datetime.datetime.now().replace(microsecond=0))
-            t = t.replace(" ", "_")
-            t = t.replace(":", "-")
-            path_ja = "log/" + t + "_ja.txt"
-            path_en = "log/" + t + "_en.txt"
     elif la == "en":
         en_sentence = d_list[1] + "\n\n" + en_sentence
         ja_sentence = d_list[2] + "\n\n" + ja_sentence
@@ -266,14 +258,6 @@ while True:
         f_en = open(path_en, "a", encoding='UTF-8')
         f_en.write(d_list[1] + "\n")
         f_en.close()
-        if d_list[1] == "chat reset":
-            ja_sentence = ""
-            en_sentence = ""
-            t = str(datetime.datetime.now().replace(microsecond=0))
-            t = t.replace(" ", "_")
-            t = t.replace(":", "-")
-            path_ja = "log/" + t + "_ja.txt"
-            path_en = "log/" + t + "_en.txt"
 
     if keyboard.is_pressed("end"):
         ja_sentence = ""
@@ -284,8 +268,8 @@ while True:
         path_ja = "log/" + t + "_ja.txt"
         path_en = "log/" + t + "_en.txt"
 
-    # if refresh_button:
-    #     ja_sentence = ""
-    #     en_sentence = ""
-    # else:
-    #     pass
+    if refresh_button:
+        ja_sentence = ""
+        en_sentence = ""
+    else:
+        pass
