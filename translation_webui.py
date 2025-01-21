@@ -1,221 +1,134 @@
-"""
-streamlit run translation_webui.py -- --sound speaker
-streamlit run translation_webui.py -- --sound mic
-"""
 import streamlit as st
 from google.cloud import speech
 from googletrans import Translator
 import soundcard as sc
-import keyboard
-import datetime
 import threading
 import queue
 import numpy as np
-import re
 import os
-import argparse
+import re
+import datetime
 
-
+# Constants
 SAMPLE_RATE = 16000
 INTERVAL = 5
 BUFFER_SIZE = 4096
+b = np.ones(100) / 100
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--sound', default='speaker')
-args = parser.parse_args()
+# Parse sound source
+st.title("Real-Time Speech Transcription and Translation")
+sound_source = st.selectbox("Select Sound Source:", ["speaker", "mic"])
 
 # Set the environment variable for authentication
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "composed-card-448514-q1-c3191fa38891.json"
-print('sound source: ' + args.sound)
 
+# Queues for inter-thread communication
 q_audio = queue.Queue()
 q_split = queue.Queue()
 q_sentence = queue.Queue()
 q_show = queue.Queue()
-b = np.ones(100) / 100
 
+# Thread flags
+stop_flag = threading.Event()
+
+# Logging directory
 os.makedirs("log", exist_ok=True)
 
-
-def transcribe_audio_with_language_detection():
+def transcribe_audio_with_language_detection(stop_flag):
     """
     Transcribe audio and detect the language using Google Speech-to-Text API.
     """
     client = speech.SpeechClient()
-    while True:
-        audio = q_audio.get()
-        if (audio ** 2).max() > 0.001:
-            content = audio.tobytes()
-            # Configure the audio and recognition settings
-            audio = speech.RecognitionAudio(content=content)
-            config = speech.RecognitionConfig(
-                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,  # Change if your file has a different encoding
-                sample_rate_hertz=16000,  # Update if your file has a different sample rate
-                language_code="en-US",  # Primary language (optional, for biasing results)
-                alternative_language_codes=["ja-JP"],  # Other languages to detect
-            )
+    while not stop_flag.is_set():
+        try:
+            audio = q_audio.get(timeout=1)
+            if (audio ** 2).max() > 0.001:
+                content = audio.tobytes()
+                # Configure the audio and recognition settings
+                audio_data = speech.RecognitionAudio(content=content)
+                config = speech.RecognitionConfig(
+                    encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                    sample_rate_hertz=SAMPLE_RATE,
+                    language_code="en-US",
+                    alternative_language_codes=["ja-JP"],
+                )
+                # Perform the transcription
+                response = client.recognize(config=config, audio=audio_data)
+                for result in response.results:
+                    transcript = result.alternatives[0].transcript
+                    q_split.put(transcript)
+        except queue.Empty:
+            continue
+        except Exception as e:
+            st.error(f"Error during transcription: {e}")
+            break
 
-            # Perform the transcription
-            response = client.recognize(config=config, audio=audio)
-
-            # Print the transcriptions and detected language
-            for result in response.results:
-                transcript = result.alternatives[0].transcript
-                confidence = result.alternatives[0].confidence
-                detected_language = result.language_code  # Detected language
-                print(f'{detected_language, confidence:.2f}: {transcript}')
-            
-            # add to queue to split sentence
-            # if detected_language == "en-US" or detected_language == "ja-JP":
-            q_split.put(transcript)
-
-
-def split_sentences_speaker():
+def split_sentences(stop_flag):
+    """
+    Split sentences from the transcription queue.
+    """
     sentence_prev = ""
-    while True:
-        sentence = q_split.get()
-        if sentence:
+    while not stop_flag.is_set():
+        try:
+            sentence = q_split.get(timeout=1)
             sentence = sentence_prev + sentence
             sentence_prev = ""
             sentences = re.split("(?<=[。．.?？!！])", sentence)
-            sentences = list(filter(lambda x: x != "", sentences))
-            # print(list(sentences))
+            sentences = [s for s in sentences if s]
             for s in sentences:
-                if s[-1] == "。" or s[-1] == "．" or s[-1] == "." or s[-1] == "?"\
-                        or s[-1] == "？" or s[-1] == "!" or s[-1] == "！":
+                if re.search("[。．.?？!！]$", s):
                     q_sentence.put(s)
-                    sentence_prev = ""
                 else:
                     sentence_prev = s
+        except queue.Empty:
+            continue
 
-
-def split_sentences_mic():
-    while True:
-        sentence = q_split.get()
-        if sentence:
-            q_sentence.put(sentence)
-
-
-def translation():
+def translation(stop_flag):
     """
-    split sentence queue から文章を受け取り，google translation apiへ渡して翻訳
-    [言語，元文，翻訳文]を1つのリストとしてキューに追加
+    Translate sentences from the transcription queue using Google Translate.
     """
-    while True:
-        sentence = q_sentence.get()
-        if sentence:
-            # print("get: " + sentence)
-            translator = Translator()
-            lang = translator.detect(sentence).lang  # type: ignore
-            # 言語が日本語だったら
+    translator = Translator()
+    while not stop_flag.is_set():
+        try:
+            sentence = q_sentence.get(timeout=1)
+            lang = translator.detect(sentence).lang  # Detect the language
             if lang == "ja":
-                trans_text = translator.translate(
-                    sentence, src=lang, dest="en").text  # type: ignore
+                trans_text = translator.translate(sentence, src="ja", dest="en").text
                 q_show.put(["ja", sentence, trans_text])
-                # print("translate: " + trans_text)
-
-            # 言語が英語だったら
             elif lang == "en":
-                trans_text = translator.translate(
-                    sentence, src=lang, dest="ja").text  # type: ignore
+                trans_text = translator.translate(sentence, src="en", dest="ja").text
                 q_show.put(["en", sentence, trans_text])
-                # print("translate: " + trans_text)
+        except queue.Empty:
+            continue
+        except Exception as e:
+            st.error(f"Translation error: {e}")
 
-
-def record():
-    # start recording
-    if args.sound == "speaker":
-        with sc.get_microphone(id=str(sc.default_speaker().name),
-                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
-            audio = np.empty(SAMPLE_RATE * INTERVAL +
-                             BUFFER_SIZE, dtype=np.float32)
+def record_audio(stop_flag):
+    """
+    Record audio from the selected sound source.
+    """
+    mic = (
+        sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
+        if sound_source == "speaker"
+        else sc.get_microphone(id=str(sc.default_microphone().name))
+    )
+    with mic.recorder(samplerate=SAMPLE_RATE, channels=1) as recorder:
+        audio = np.empty(SAMPLE_RATE * INTERVAL + BUFFER_SIZE, dtype=np.float32)
+        n = 0
+        while not stop_flag.is_set():
+            while n < SAMPLE_RATE * INTERVAL:
+                data = recorder.record(BUFFER_SIZE)
+                audio[n:n + len(data)] = data.reshape(-1)
+                n += len(data)
+            q_audio.put(audio[:n])
+            audio = np.empty(SAMPLE_RATE * INTERVAL + BUFFER_SIZE, dtype=np.float32)
             n = 0
-            while True:
-                while n < SAMPLE_RATE * INTERVAL:
-                    data = mic.record(BUFFER_SIZE)
-                    audio[n:n+len(data)] = data.reshape(-1)
-                    n += len(data)
 
-                # find silent periods
-                m = n * 4 // 5
-                vol = np.convolve(audio[m:n] ** 2, b, 'same')
-                m += vol.argmin()
-                q_audio.put(audio[:m])
+# UI Components
+refresh_button = st.button("Refresh")
+start_button = st.button("Start Transcription")
+stop_button = st.button("Stop Transcription")
 
-                audio_prev = audio
-                audio = np.empty(SAMPLE_RATE * INTERVAL +
-                                 BUFFER_SIZE, dtype=np.float32)
-                audio[:n-m] = audio_prev[m:n]
-                n = n-m
-
-    elif args.sound == "mic":
-        with sc.get_microphone(id=str(sc.default_microphone().name),
-                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
-            audio = np.empty(SAMPLE_RATE * INTERVAL +
-                             BUFFER_SIZE, dtype=np.float32)
-            n = 0
-            while True:
-                while n < SAMPLE_RATE * INTERVAL:
-                    data = mic.record(BUFFER_SIZE)
-                    audio[n:n+len(data)] = data.reshape(-1)
-                    n += len(data)
-
-                # find silent periods
-                m = n * 4 // 5
-                vol = np.convolve(audio[m:n] ** 2, b, 'same')
-                m += vol.argmin()
-                q_audio.put(audio[:m])
-
-                audio_prev = audio
-                audio = np.empty(SAMPLE_RATE * INTERVAL +
-                                 BUFFER_SIZE, dtype=np.float32)
-                audio[:n-m] = audio_prev[m:n]
-                n = n-m
-
-    else:
-        print("sound source input is not valid. Use speaker sound...")
-        with sc.get_microphone(id=str(sc.default_speaker().name),
-                               include_loopback=True).recorder(samplerate=SAMPLE_RATE, channels=1) as mic:
-            audio = np.empty(SAMPLE_RATE * INTERVAL +
-                             BUFFER_SIZE, dtype=np.float32)
-            n = 0
-            while True:
-                while n < SAMPLE_RATE * INTERVAL:
-                    data = mic.record(BUFFER_SIZE)
-                    audio[n:n+len(data)] = data.reshape(-1)
-                    n += len(data)
-
-                # find silent periods
-                m = n * 4 // 5
-                vol = np.convolve(audio[m:n] ** 2, b, 'same')
-                m += vol.argmin()
-                q_audio.put(audio[:m])
-
-                audio_prev = audio
-                audio = np.empty(SAMPLE_RATE * INTERVAL +
-                                 BUFFER_SIZE, dtype=np.float32)
-                audio[:n-m] = audio_prev[m:n]
-                n = n-m
-
-
-th_recognize = threading.Thread(target=transcribe_audio_with_language_detection, daemon=True)
-if args.sound == "speaker":
-    th_split = threading.Thread(target=split_sentences_speaker, daemon=True)
-elif args.sound == "mic":
-    th_split = threading.Thread(target=split_sentences_mic, daemon=True)
-else:
-    print("sound source input is not valid. Use speaker sound...")
-    th_split = threading.Thread(target=split_sentences_speaker, daemon=True)
-th_translate = threading.Thread(target=translation, daemon=True)
-th_record = threading.Thread(target=record, daemon=True)
-
-th_recognize.start()
-th_split.start()
-th_translate.start()
-th_record.start()
-
-
-refresh_button = st.button("refresh")
 col_en, col_ja = st.columns(2)
 with col_en:
     st.header("English")
@@ -223,53 +136,49 @@ with col_en:
 with col_ja:
     st.header("日本語")
     placeholder_ja = st.empty()
-t = str(datetime.datetime.now().replace(microsecond=0))
-t = t.replace(" ", "_")
-t = t.replace(":", "-")
-path_ja = "log/" + t + "_ja.txt"
-path_en = "log/" + t + "_en.txt"
 
+# Sentence logs
+t = str(datetime.datetime.now().replace(microsecond=0)).replace(" ", "_").replace(":", "-")
+path_ja = f"log/{t}_ja.txt"
+path_en = f"log/{t}_en.txt"
 ja_sentence = ""
 en_sentence = ""
 
-while True:
-    d_list = q_show.get()
-    la = d_list[0]
+if start_button:
+    stop_flag.clear()
+    threading.Thread(target=record_audio, args=(stop_flag,), daemon=True).start()
+    threading.Thread(target=transcribe_audio_with_language_detection, args=(stop_flag,), daemon=True).start()
+    threading.Thread(target=split_sentences, args=(stop_flag,), daemon=True).start()
+    threading.Thread(target=translation, args=(stop_flag,), daemon=True).start()
+    st.success("Transcription started.")
 
-    if la == "ja":
-        ja_sentence = d_list[1] + "\n\n" + ja_sentence
-        en_sentence = d_list[2] + "\n\n" + en_sentence
+if stop_button:
+    stop_flag.set()
+    st.warning("Transcription stopped.")
+
+if refresh_button:
+    ja_sentence = ""
+    en_sentence = ""
+
+while not stop_flag.is_set():
+    try:
+        d_list = q_show.get(timeout=1)
+        lang, original, translated = d_list
+        if lang == "ja":
+            ja_sentence = f"{original}\n\n{ja_sentence}"
+            en_sentence = f"{translated}\n\n{en_sentence}"
+            with open(path_ja, "a", encoding="utf-8") as f:
+                f.write(original + "\n")
+            with open(path_en, "a", encoding="utf-8") as f:
+                f.write(translated + "\n")
+        elif lang == "en":
+            en_sentence = f"{original}\n\n{en_sentence}"
+            ja_sentence = f"{translated}\n\n{ja_sentence}"
+            with open(path_ja, "a", encoding="utf-8") as f:
+                f.write(translated + "\n")
+            with open(path_en, "a", encoding="utf-8") as f:
+                f.write(original + "\n")
         placeholder_ja.write(ja_sentence)
         placeholder_en.write(en_sentence)
-        f_ja = open(path_ja, "a")
-        f_ja.write(d_list[1] + "\n")
-        f_ja.close()
-        f_en = open(path_en, "a")
-        f_en.write(d_list[2] + "\n")
-        f_en.close()
-    elif la == "en":
-        en_sentence = d_list[1] + "\n\n" + en_sentence
-        ja_sentence = d_list[2] + "\n\n" + ja_sentence
-        placeholder_en.write(en_sentence)
-        placeholder_ja.write(ja_sentence)
-        f_ja = open(path_ja, "a", encoding='UTF-8')
-        f_ja.write(d_list[2] + "\n")
-        f_ja.close()
-        f_en = open(path_en, "a", encoding='UTF-8')
-        f_en.write(d_list[1] + "\n")
-        f_en.close()
-
-    if keyboard.is_pressed("end"):
-        ja_sentence = ""
-        en_sentence = ""
-        t = str(datetime.datetime.now().replace(microsecond=0))
-        t = t.replace(" ", "_")
-        t = t.replace(":", "-")
-        path_ja = "log/" + t + "_ja.txt"
-        path_en = "log/" + t + "_en.txt"
-
-    if refresh_button:
-        ja_sentence = ""
-        en_sentence = ""
-    else:
-        pass
+    except queue.Empty:
+        continue
