@@ -1,36 +1,20 @@
 # realtime_translation
 リアルタイム日本語 ⇔ 英語翻訳をします。
 
-スピーカーからの出力を拾って、英語なら日本語に、日本語なら英語に翻訳します。
+マイクから音声を拾って、英語なら日本語に、日本語なら英語に翻訳します。
 
-デフォルトスピーカーの出力を拾う → whisperで文字起こし → google翻訳のapi(フリーで使えます) → streamlitで表示
+マイクの音を拾う → google-speech-to-text(Google cloudのapi使用) → google翻訳のapi(こちらは無料) → streamlitで表示
 という流れになっています。
 
-whisperを動かすためのアレコレ(CUDAとcuDNNとpytorchとffmpegと、、)が必要です。
+https://cloud.google.com/speech-to-text?utm_source=google&utm_medium=cpc&utm_campaign=japac-JP-all-en-dr-BKWS-all-pkws-trial-PHR-dr-1605216&utm_content=text-ad-none-none-DEV_c-CRE_654190887034-ADGP_Hybrid+%7C+BKWS+-+BRO+%7C+Txt+-AI+%26+ML-Speech+to+Text-google+audio+to+text-main-KWID_43700075964501439-kwd-1879918006449&userloc_9198686-network_g&utm_term=KW_google+audio+to+text+conversion&gad_source=1&gclid=Cj0KCQiAy8K8BhCZARIsAKJ8sfR7584L4Cirtj-SNgw464hK_LKhjOPBFgPvOYDw_He-FpQIjiWBK-caAspqEALw_wcB&gclsrc=aw.ds
 
-https://happy-shibusawake.com/openai_whisper/696/ 
+Google cloud の speech-to-textのapiを使います。
 
-↑
-基本こちらのサイトを参考に進めてもらって大丈夫ですが、pythonのバージョンは3.7じゃなくて3.8じゃないと多分動かないです。
+https://www.youtube.com/watch?v=izdDHVLc_Z0
 
-セイウチ演算子なるものや、fuctoolsなるものがwhisperの中で使われていて、これらはpython3.8から対応したらしいです。
+このへんのを参考に.jsonのapiキーを作成し、main.py内のGOOGLE_APPLICATION_CREDENTIALSにパスが入るようにしてください。
 
-pytorchはpython3.7対応となっているstableの方を入れてもらえば、python3.8でも動きました。CUDAは11.7を入れてます。
-
-whisperを動かす土台ができていれば、あとはanaconda等でenvironment.ymlから仮想環境を作ってもらえば行ける、、、はずです。
-
-whisperのモデルはデフォルトではlargeを読み込むようになっています。翻訳にかける都合上、文字起こしはなるべく高い精度が欲しいのでmediumかlargeがおすすめです。
-
-実行するときは、streamlit run translation_webui.py をコマンドとして実行します。
-
-streamlit run translation_webui.py -- --sound mic をコマンドとして実行するとマイクから音を拾うようになります。
-
-![Screenshot 2023-02-13 045713](https://user-images.githubusercontent.com/87175394/218334117-19787714-1fb9-4915-b611-1c5ec32ec8b5.png)
-![Screenshot 2023-02-13 050025](https://user-images.githubusercontent.com/87175394/218334121-1acc1399-1f62-4b78-8127-adc6b390904e.png)
-
-
-
-今回、自動的にいい感じに区切りながら音声を読み取って行く工程は
+自動的にいい感じに区切りながら音声を読み取って行く工程は
 
 https://tadaoyamaoka.hatenablog.com/entry/2022/10/15/175722
 

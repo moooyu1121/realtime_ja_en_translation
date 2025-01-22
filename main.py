@@ -10,6 +10,9 @@ import threading
 import queue
 import asyncio
 
+# Set the environment variable for authentication
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "composed-card-448514-q1-c3191fa38891.json"
+
 SAMPLE_RATE = 16000
 INTERVAL = 5
 BUFFER_SIZE = 4096
@@ -163,8 +166,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # Set the environment variable for authentication
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "composed-card-448514-q1-c3191fa38891.json"
     q_audio = queue.Queue()
     q_show = queue.Queue()
 
