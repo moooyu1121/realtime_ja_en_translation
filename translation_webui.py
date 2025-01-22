@@ -3,7 +3,7 @@ streamlit run translation_webui.py -- --sound speaker --model large
 streamlit run translation_webui.py -- --sound mic --model large
 """
 import streamlit as st
-import whisper
+from faster_whisper import WhisperModel
 from googletrans import Translator
 import soundcard as sc
 import keyboard
@@ -21,7 +21,7 @@ INTERVAL = 5
 BUFFER_SIZE = 4096
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='large')
+parser.add_argument('--model', default="large-v3")
 parser.add_argument('--sound', default='speaker')
 args = parser.parse_args()
 

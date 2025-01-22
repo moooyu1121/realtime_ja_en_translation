@@ -1,0 +1,6 @@
+yt-dlp
+faster_whisper
+streamlit
+soundcard
+keyboard
+googletrans
